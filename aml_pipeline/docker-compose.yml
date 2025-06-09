@@ -1,0 +1,81 @@
+version: '3.8'
+
+services:
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "8502:8502"
+    volumes:
+      - ./frontend:/app
+      - ./data:/app/data
+    environment:
+      - FRONTEND_PORT=8502
+      - FRONTEND_HOST=0.0.0.0
+      - BACKEND_URL=http://backend:5000
+      - CONCRETE_ML_URL=http://concrete_ml:8000
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./backend:/app
+      - ./data:/app/data:rw
+      - ./backend/logs:/app/logs:rw
+      - ./backend/models:/app/models:rw
+    environment:
+      - FLASK_APP=app.py
+      - FLASK_ENV=production
+      - PORT=5000
+      - CONCRETE_ML_URL=http://concrete_ml:8000
+      - PYTHONUNBUFFERED=1
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 30s
+      retries: 3
+      start_period: 60s
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  concrete_ml:
+    build:
+      context: ./concrete_ml
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data:rw
+      - ./backend/models:/app/models:rw
+    environment:
+      - PYTHONPATH=/app
+      - CONCRETE_ML_DEBUG=1
+      - PORT=8000
+    networks:
+      - app-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://0.0.0.0:8000/health"]
+      interval: 30s
+      timeout: 30s
+      retries: 3
+      start_period: 60s
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  model-data:
+    driver: local 
